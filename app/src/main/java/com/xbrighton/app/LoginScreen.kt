@@ -1,5 +1,6 @@
 package com.xbrighton.app
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -61,62 +62,48 @@ fun LoginScreen() {
     var password by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Sign in to continue") }
     var signedInUser by remember { mutableStateOf(SecureTokenStore.getEmail(context)) }
+    var profile by remember { mutableStateOf<ProfileResult?>(null) }
 
     if (signedInUser != null) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF0D1321))
-                .padding(22.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "XBrighton",
-                color = Color.White,
-                style = MaterialTheme.typography.headlineMedium
-            )
-            Text(
-                text = "Signed in as $signedInUser",
-                color = Color(0xFFBEE3FF),
-                modifier = Modifier.padding(top = 8.dp, bottom = 18.dp)
-            )
-
-            Button(
-                onClick = {
-                    coroutineScope.launch {
-                        val refreshed = refreshTokenIfNeeded(client, context)
-                        status = if (refreshed) {
-                            "Session refreshed successfully"
-                        } else {
-                            "Sign in again"
-                        }
+        AuthenticatedScreen(
+            userEmail = signedInUser!!,
+            profile = profile,
+            status = status,
+            onRefresh = {
+                coroutineScope.launch {
+                    val refreshed = refreshTokenIfNeeded(client, context)
+                    status = if (refreshed) {
+                        "Session refreshed successfully"
+                    } else {
+                        "Sign in again"
                     }
-                },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Refresh Session")
-            }
-
-            Button(
-                onClick = {
-                    coroutineScope.launch {
-                        val success = logoutUser(client, context)
-                        if (success) {
-                            SecureTokenStore.clearSession(context)
-                            signedInUser = null
-                            status = "Signed out"
-                        } else {
-                            status = "Unable to sign out"
-                        }
+                }
+            },
+            onLoadProfile = {
+                coroutineScope.launch {
+                    val result = getProfile(client, context)
+                    profile = result
+                    status = if (result != null) {
+                        "Profile loaded for ${result.email}"
+                    } else {
+                        "Unable to load profile"
                     }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 10.dp)
-            ) {
-                Text("Sign Out")
+                }
+            },
+            onLogout = {
+                coroutineScope.launch {
+                    val success = logoutUser(client, context)
+                    if (success) {
+                        SecureTokenStore.clearSession(context)
+                        signedInUser = null
+                        profile = null
+                        status = "Signed out"
+                    } else {
+                        status = "Unable to sign out"
+                    }
+                }
             }
-        }
+        )
         return
     }
 
@@ -172,6 +159,7 @@ fun LoginScreen() {
                     } else {
                         SecureTokenStore.saveSession(context, result.email, result.accessToken, result.refreshToken)
                         signedInUser = result.email
+                        profile = null
                         status = "Signed in as ${result.email}"
                     }
                 }
@@ -192,6 +180,7 @@ fun LoginScreen() {
                     } else {
                         SecureTokenStore.saveSession(context, result.email, result.accessToken, result.refreshToken)
                         signedInUser = result.email
+                        profile = null
                         status = "Account created for ${result.email}"
                     }
                 }
@@ -201,6 +190,79 @@ fun LoginScreen() {
                 .padding(top = 10.dp)
         ) {
             Text("Create Account")
+        }
+    }
+}
+
+@Composable
+private fun AuthenticatedScreen(
+    userEmail: String,
+    profile: ProfileResult?,
+    status: String,
+    onRefresh: () -> Unit,
+    onLoadProfile: () -> Unit,
+    onLogout: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0D1321))
+            .padding(22.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "XBrighton",
+            color = Color.White,
+            style = MaterialTheme.typography.headlineMedium
+        )
+        Text(
+            text = "Signed in as $userEmail",
+            color = Color(0xFFBEE3FF),
+            modifier = Modifier.padding(top = 8.dp, bottom = 18.dp)
+        )
+
+        if (profile != null) {
+            Text(
+                text = "Profile ID: ${profile.id}",
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            Text(
+                text = "Email: ${profile.email}",
+                color = Color.White,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
+
+        Text(
+            text = status,
+            color = Color(0xFFBEE3FF),
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        Button(
+            onClick = onLoadProfile,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("View Profile")
+        }
+
+        Button(
+            onClick = onRefresh,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+        ) {
+            Text("Refresh Session")
+        }
+
+        Button(
+            onClick = onLogout,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+        ) {
+            Text("Sign Out")
         }
     }
 }
@@ -245,7 +307,7 @@ private suspend fun performAuthRequest(
     }
 }
 
-private suspend fun refreshTokenIfNeeded(client: OkHttpClient, context: android.content.Context): Boolean = withContext(Dispatchers.IO) {
+private suspend fun refreshTokenIfNeeded(client: OkHttpClient, context: Context): Boolean = withContext(Dispatchers.IO) {
     val refreshToken = SecureTokenStore.getRefreshToken(context) ?: return@withContext false
     val json = JSONObject().put("refreshToken", refreshToken).toString()
 
@@ -276,7 +338,54 @@ private suspend fun refreshTokenIfNeeded(client: OkHttpClient, context: android.
     }
 }
 
-private suspend fun logoutUser(client: OkHttpClient, context: android.content.Context): Boolean = withContext(Dispatchers.IO) {
+private suspend fun getProfile(client: OkHttpClient, context: Context): ProfileResult? = withContext(Dispatchers.IO) {
+    val accessToken = SecureTokenStore.getAccessToken(context) ?: return@withContext null
+    val request = Request.Builder()
+        .url(BASE_URL + "/profile")
+        .addHeader("Authorization", "Bearer $accessToken")
+        .build()
+
+    try {
+        client.newCall(request).execute().use { response ->
+            if (response.code == 401) {
+                val refreshed = refreshTokenIfNeeded(client, context)
+                if (!refreshed) return@withContext null
+                val newToken = SecureTokenStore.getAccessToken(context) ?: return@withContext null
+                val retryRequest = Request.Builder()
+                    .url(BASE_URL + "/profile")
+                    .addHeader("Authorization", "Bearer $newToken")
+                    .build()
+
+                retryRequest.let { req ->
+                    client.newCall(req).execute().use { retryResponse ->
+                        if (!retryResponse.isSuccessful) return@withContext null
+                        val body = retryResponse.body?.string() ?: return@withContext null
+                        val obj = JSONObject(body)
+                        val user = obj.optJSONObject("user") ?: return@withContext null
+                        return@withContext ProfileResult(
+                            id = user.optInt("id", 0),
+                            email = user.optString("email", SecureTokenStore.getEmail(context) ?: "")
+                        )
+                    }
+                }
+            }
+
+            if (!response.isSuccessful) return@withContext null
+            val body = response.body?.string() ?: return@withContext null
+            val obj = JSONObject(body)
+            val user = obj.optJSONObject("user") ?: return@withContext null
+            ProfileResult(
+                id = user.optInt("id", 0),
+                email = user.optString("email", SecureTokenStore.getEmail(context) ?: "")
+            )
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
+
+private suspend fun logoutUser(client: OkHttpClient, context: Context): Boolean = withContext(Dispatchers.IO) {
     val accessToken = SecureTokenStore.getAccessToken(context) ?: return@withContext false
     val refreshToken = SecureTokenStore.getRefreshToken(context)
 
@@ -304,4 +413,9 @@ data class AuthResult(
     val email: String,
     val accessToken: String,
     val refreshToken: String
+)
+
+data class ProfileResult(
+    val id: Int,
+    val email: String
 )
