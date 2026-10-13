@@ -35,6 +35,8 @@ The mock API will run at:
 - http://localhost:3000/ai-teacher
 - http://localhost:3000/market
 
+When running the Wear OS app on the Android emulator, to reach your host machine's backend use http://10.0.2.2:3000
+
 ### 2) Open in Android Studio
 
 - Open the root folder in Android Studio
@@ -43,7 +45,7 @@ The mock API will run at:
 
 ### 3) Wear app flow
 
-- Product list screen
+- Product list screen (loads from backend)
 - Product detail screen
 - AI Teacher assistant
 - Market ticker / trading mock

@@ -17,7 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -26,11 +26,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.lifecycleScope
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 class MainActivity : ComponentActivity() {
+    private val client = OkHttpClient()
+    private val gson = Gson()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -39,23 +49,47 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-}
 
-@Composable
-fun XBrightonAppNav() {
-    var currentScreen by remember { mutableStateOf("home") }
-    val products = listOf(
-        Product("Galaxy Runner X", "Shoes", "$129.99", "Performance comfort"),
-        Product("Aurora Street Jacket", "Clothes", "$189.00", "Urban premium"),
-        Product("Velocity Knit Set", "Clothes", "$149.00", "Minimal luxury")
-    )
+    @Composable
+    fun XBrightonAppNav() {
+        val productsState = remember { mutableStateListOf<Product>() }
+        var currentScreen by remember { androidx.compose.runtime.mutableStateOf("home") }
 
-    when (currentScreen) {
-        "home" -> HomeScreen(products, onProductClick = { currentScreen = "detail" })
-        "detail" -> DetailScreen(onBack = { currentScreen = "home" }, onAiClick = { currentScreen = "ai" }, onMarketClick = { currentScreen = "market" })
-        "ai" -> AiScreen(onBack = { currentScreen = "detail" })
-        "market" -> MarketScreen(onBack = { currentScreen = "detail" })
-        else -> HomeScreen(products, onProductClick = { currentScreen = "detail" })
+        // Fetch products once when the composable is composed
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            fetchProducts()?.let { remote ->
+                productsState.clear()
+                productsState.addAll(remote)
+            }
+        }
+
+        when (currentScreen) {
+            "home" -> HomeScreen(productsState, onProductClick = { currentScreen = "detail" })
+            "detail" -> DetailScreen(onBack = { currentScreen = "home" }, onAiClick = { currentScreen = "ai" }, onMarketClick = { currentScreen = "market" })
+            "ai" -> AiScreen(onBack = { currentScreen = "detail" })
+            "market" -> MarketScreen(onBack = { currentScreen = "detail" })
+            else -> HomeScreen(productsState, onProductClick = { currentScreen = "detail" })
+        }
+    }
+
+    private suspend fun fetchProducts(): List<Product>? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // When using an Android emulator, use 10.0.2.2 to reach the host machine
+                val url = "http://10.0.2.2:3000/products"
+                val request = Request.Builder().url(url).build()
+                client.newCall(request).execute().use { resp ->
+                    val body = resp.body?.string() ?: return@withContext null
+                    val wrapper = gson.fromJson(body, ProductsWrapper::class.java)
+                    wrapper.products.map { p ->
+                        Product(p.name, p.category, "\$${p.price}", p.description)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
+        }
     }
 }
 
@@ -230,5 +264,16 @@ data class Product(
     val name: String,
     val category: String,
     val price: String,
+    val description: String
+)
+
+// DTOs for backend parsing
+data class ProductsWrapper(val products: List<BackendProduct>)
+
+data class BackendProduct(
+    val id: String,
+    val name: String,
+    val category: String,
+    val price: Double,
     val description: String
 )
