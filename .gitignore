@@ -1,35 +1,7 @@
-# Gradle files
-.gradle/
-build/
-.kotlin/
+# XBrighton app starter
 
-# Local configuration file (sdk path, etc)
-local.properties
+This repo holds a full starter scaffold for a Galaxy Watch app concept for XBrighton Technologies.
 
-# Log/OS Files
-*.log
-
-# Android Studio generated files and folders
-captures/
-.externalNativeBuild/
-.cxx/
-*.aab
-*.apk
-output-metadata.json
-
-# IntelliJ
-*.iml
-.idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
-
-# Keystore files
-*.jks
-*.keystore
-
-# Google Services (e.g. APIs or Firebase)
-google-services.json
-
-# Android Profiling
-*.hprof
+- app: companion Android app shell
+- wear: Wear OS app shell
+- backend: mock API service
