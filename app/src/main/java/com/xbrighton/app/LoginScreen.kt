@@ -43,6 +43,7 @@ class MainActivity : ComponentActivity() {
 fun LoginScreen() {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("Use email/password or Google sign-in") }
 
     Column(
         modifier = Modifier
@@ -81,8 +82,14 @@ fun LoginScreen() {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
         )
 
+        Text(
+            text = status,
+            color = Color(0xFFBEE3FF),
+            modifier = Modifier.padding(top = 14.dp, bottom = 8.dp)
+        )
+
         Button(
-            onClick = { /* TODO: Firebase auth hook */ },
+            onClick = { status = "Email/password login is ready for Firebase wiring" },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 18.dp)
@@ -91,7 +98,7 @@ fun LoginScreen() {
         }
 
         Button(
-            onClick = { /* TODO: Firebase Google/Auth Provider */ },
+            onClick = { status = "Google login is ready for Firebase provider wiring" },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 10.dp)
