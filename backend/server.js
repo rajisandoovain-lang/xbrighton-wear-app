@@ -34,9 +34,7 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `, (tableErr) => {
-      if (tableErr) {
-        console.error('Unable to create users table:', tableErr.message);
-      }
+      if (tableErr) console.error('Unable to create users table:', tableErr.message);
     });
 
     db.run(`
@@ -49,41 +47,41 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
         UNIQUE(user_id, token_hash)
       )
     `, (tableErr) => {
-      if (tableErr) {
-        console.error('Unable to create refresh_tokens table:', tableErr.message);
-      }
+      if (tableErr) console.error('Unable to create refresh_tokens table:', tableErr.message);
+    });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS cart_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        product_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        price REAL NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `, (tableErr) => {
+      if (tableErr) console.error('Unable to create cart_items table:', tableErr.message);
+    });
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS favorites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        product_id TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, product_id)
+      )
+    `, (tableErr) => {
+      if (tableErr) console.error('Unable to create favorites table:', tableErr.message);
     });
   }
 });
 
 const mockProducts = [
-  {
-    id: 'shoes-001',
-    name: 'Galaxy Runner X',
-    category: 'Shoes',
-    price: 129.99,
-    description: 'Performance comfort',
-    color: 'Midnight Blue',
-    size: '8'
-  },
-  {
-    id: 'clothes-001',
-    name: 'Aurora Street Jacket',
-    category: 'Clothes',
-    price: 189.0,
-    description: 'Urban premium',
-    color: 'Stone Grey',
-    size: 'M'
-  },
-  {
-    id: 'clothes-002',
-    name: 'Velocity Knit Set',
-    category: 'Clothes',
-    price: 149.0,
-    description: 'Minimal luxury',
-    color: 'Ivory',
-    size: 'L'
-  }
+  { id: 'shoes-001', name: 'Galaxy Runner X', category: 'Shoes', price: 129.99, description: 'Performance comfort', color: 'Midnight Blue', size: '8' },
+  { id: 'clothes-001', name: 'Aurora Street Jacket', category: 'Clothes', price: 189.0, description: 'Urban premium', color: 'Stone Grey', size: 'M' },
+  { id: 'clothes-002', name: 'Velocity Knit Set', category: 'Clothes', price: 149.0, description: 'Minimal luxury', color: 'Ivory', size: 'L' }
 ];
 
 const run = (sql, params = []) => new Promise((resolve, reject) => {
@@ -100,23 +98,23 @@ const get = (sql, params = []) => new Promise((resolve, reject) => {
   });
 });
 
+const all = (sql, params = []) => new Promise((resolve, reject) => {
+  db.all(sql, params, (err, rows) => {
+    if (err) return reject(err);
+    resolve(rows || []);
+  });
+});
+
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
 function signToken(user, type = 'access') {
   const expiresIn = type === 'refresh' ? '7d' : '15m';
-  return jwt.sign(
-    { sub: user.id, email: user.email, type },
-    JWT_SECRET,
-    { expiresIn }
-  );
+  return jwt.sign({ sub: user.id, email: user.email, type }, JWT_SECRET, { expiresIn });
 }
 
 async function saveRefreshToken(user, refreshToken) {
   const tokenHash = hashToken(refreshToken);
-  await run(
-    'INSERT OR IGNORE INTO refresh_tokens (user_id, token_hash, revoked) VALUES (?, ?, 0)',
-    [user.id, tokenHash]
-  );
+  await run('INSERT OR IGNORE INTO refresh_tokens (user_id, token_hash, revoked) VALUES (?, ?, 0)', [user.id, tokenHash]);
 }
 
 async function revokeRefreshToken(refreshToken) {
@@ -146,7 +144,6 @@ async function requireAuth(req, res, next) {
   try {
     const token = authHeader.split(' ')[1];
     const payload = jwt.verify(token, JWT_SECRET);
-
     if (payload.type !== 'access') {
       return res.status(401).json({ error: 'Invalid token type' });
     }
@@ -165,7 +162,6 @@ async function requireAuth(req, res, next) {
 
 app.post('/auth/register', async (req, res) => {
   const { email, password } = req.body || {};
-
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
@@ -191,10 +187,7 @@ app.post('/auth/register', async (req, res) => {
     const refreshToken = signToken(user, 'refresh');
     await saveRefreshToken(user, refreshToken);
 
-    return res.status(201).json({
-      message: 'User registered successfully',
-      ...createAuthPayload(user, refreshToken)
-    });
+    return res.status(201).json({ message: 'User registered successfully', ...createAuthPayload(user, refreshToken) });
   } catch (error) {
     console.error('Register failed:', error);
     return res.status(500).json({ error: 'Registration failed' });
@@ -203,7 +196,6 @@ app.post('/auth/register', async (req, res) => {
 
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body || {};
-
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
@@ -225,10 +217,7 @@ app.post('/auth/login', async (req, res) => {
     const refreshToken = signToken(safeUser, 'refresh');
     await saveRefreshToken(safeUser, refreshToken);
 
-    return res.json({
-      message: 'Login successful',
-      ...createAuthPayload(safeUser, refreshToken)
-    });
+    return res.json({ message: 'Login successful', ...createAuthPayload(safeUser, refreshToken) });
   } catch (error) {
     console.error('Login error:', error);
     return res.status(500).json({ error: 'Login failed' });
@@ -237,7 +226,6 @@ app.post('/auth/login', async (req, res) => {
 
 app.post('/auth/refresh', async (req, res) => {
   const { refreshToken } = req.body || {};
-
   if (!refreshToken) {
     return res.status(400).json({ error: 'Refresh token is required' });
   }
@@ -249,11 +237,7 @@ app.post('/auth/refresh', async (req, res) => {
     }
 
     const tokenHash = hashToken(refreshToken);
-    const tokenRow = await get(
-      'SELECT id, user_id FROM refresh_tokens WHERE user_id = ? AND token_hash = ? AND revoked = 0',
-      [payload.sub, tokenHash]
-    );
-
+    const tokenRow = await get('SELECT id, user_id FROM refresh_tokens WHERE user_id = ? AND token_hash = ? AND revoked = 0', [payload.sub, tokenHash]);
     if (!tokenRow) {
       return res.status(401).json({ error: 'Refresh token revoked or invalid' });
     }
@@ -267,11 +251,7 @@ app.post('/auth/refresh', async (req, res) => {
     const newRefreshToken = signToken(user, 'refresh');
     await saveRefreshToken(user, newRefreshToken);
 
-    return res.json({
-      accessToken: signToken(user, 'access'),
-      refreshToken: newRefreshToken,
-      user: { id: user.id, email: user.email }
-    });
+    return res.json({ accessToken: signToken(user, 'access'), refreshToken: newRefreshToken, user: { id: user.id, email: user.email } });
   } catch (error) {
     return res.status(401).json({ error: 'Refresh token expired or invalid' });
   }
@@ -279,29 +259,22 @@ app.post('/auth/refresh', async (req, res) => {
 
 app.post('/auth/logout', requireAuth, async (req, res) => {
   const { refreshToken } = req.body || {};
-
   if (refreshToken) {
     await revokeRefreshToken(refreshToken);
   }
-
   await revokeAllRefreshTokensForUser(req.user.id);
   return res.json({ message: 'Logged out successfully', user: req.user });
 });
 
 app.get('/profile', requireAuth, (req, res) => {
-  return res.json({
-    user: req.user,
-    message: 'Authenticated user profile'
-  });
+  return res.json({ user: req.user, message: 'Authenticated user profile' });
 });
 
 app.get('/products', async (req, res) => {
   try {
     const productsApiUrl = process.env.PRODUCTS_API_URL;
     if (productsApiUrl && productsApiUrl !== 'http://localhost:3000/products') {
-      const response = await axios.get(productsApiUrl, {
-        headers: { Accept: 'application/json' }
-      });
+      const response = await axios.get(productsApiUrl, { headers: { Accept: 'application/json' } });
       return res.json({ products: response.data.products || response.data });
     }
     return res.json({ products: mockProducts });
@@ -311,65 +284,74 @@ app.get('/products', async (req, res) => {
   }
 });
 
-app.get('/ai-teacher', async (req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || apiKey === 'your_openai_api_key_here') {
-    return res.json({
-      response: 'AI Teacher is ready for real integration. Add your OpenAI key to backend/.env to enable live responses.'
-    });
+app.get('/cart', requireAuth, async (req, res) => {
+  const cart = await all('SELECT * FROM cart_items WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
+  return res.json({ items: cart });
+});
+
+app.post('/cart', requireAuth, async (req, res) => {
+  const { productId, name, price, quantity = 1 } = req.body || {};
+  if (!productId || !name || !price) {
+    return res.status(400).json({ error: 'productId, name, and price are required' });
   }
 
-  try {
-    const systemMessage = 'You are an expert fashion styling assistant for a premium apparel and shoe brand.';
-    const userPrompt = req.query.prompt || 'Recommend a premium streetwear outfit with shoes and jacket.';
-
-    const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemMessage },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.7
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    const text = response.data.choices?.[0]?.message?.content || 'AI recommendation unavailable.';
-    return res.json({ response: text.trim() });
-  } catch (error) {
-    console.error('OpenAI call failed:', error.response?.data || error.message);
-    return res.json({
-      response: 'AI Teacher is using fallback guidance. Add a valid OpenAI key to enable live responses.'
-    });
+  const existing = await get('SELECT id FROM cart_items WHERE user_id = ? AND product_id = ?', [req.user.id, productId]);
+  if (existing) {
+    await run('UPDATE cart_items SET quantity = quantity + ? WHERE id = ?', [quantity, existing.id]);
+    const updated = await get('SELECT * FROM cart_items WHERE id = ?', [existing.id]);
+    return res.json({ ok: true, item: updated, message: 'Cart updated' });
   }
+
+  const item = await run('INSERT INTO cart_items (user_id, product_id, name, price, quantity) VALUES (?, ?, ?, ?, ?)', [req.user.id, productId, name, price, quantity]);
+  const created = await get('SELECT * FROM cart_items WHERE id = ?', [item.id]);
+  return res.json({ ok: true, item: created, message: 'Item added to cart' });
+});
+
+app.delete('/cart/:id', requireAuth, async (req, res) => {
+  const itemId = Number(req.params.id);
+  if (!itemId) {
+    return res.status(400).json({ error: 'Invalid cart item id' });
+  }
+
+  const item = await get('SELECT * FROM cart_items WHERE id = ? AND user_id = ?', [itemId, req.user.id]);
+  if (!item) {
+    return res.status(404).json({ error: 'Cart item not found' });
+  }
+
+  await run('DELETE FROM cart_items WHERE id = ? AND user_id = ?', [itemId, req.user.id]);
+  return res.json({ ok: true, removed: item, message: 'Item removed from cart' });
+});
+
+app.get('/favorites', requireAuth, async (req, res) => {
+  const items = await all('SELECT * FROM favorites WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
+  return res.json({ items });
+});
+
+app.post('/favorites', requireAuth, async (req, res) => {
+  const { productId } = req.body || {};
+  if (!productId) {
+    return res.status(400).json({ error: 'productId is required' });
+  }
+
+  const existing = await get('SELECT id FROM favorites WHERE user_id = ? AND product_id = ?', [req.user.id, productId]);
+  if (existing) {
+    return res.json({ ok: true, message: 'Product already saved', item: existing });
+  }
+
+  const result = await run('INSERT INTO favorites (user_id, product_id) VALUES (?, ?)', [req.user.id, productId]);
+  const created = await get('SELECT * FROM favorites WHERE id = ?', [result.id]);
+  return res.status(201).json({ ok: true, item: created, message: 'Product saved to favorites' });
 });
 
 app.get('/market', async (req, res) => {
   const apiKey = process.env.ALPHAVANTAGE_API_KEY;
   if (!apiKey || apiKey === 'your_alphavantage_api_key_here') {
-    return res.json({
-      tickers: [
-        { symbol: 'XBT', price: 68420.12, change: 1.84 },
-        { symbol: 'AAPL', price: 225.91, change: -0.42 },
-        { symbol: 'NVDA', price: 118.54, change: 2.14 }
-      ]
-    });
+    return res.json({ tickers: [{ symbol: 'XBT', price: 68420.12, change: 1.84 }, { symbol: 'AAPL', price: 225.91, change: -0.42 }, { symbol: 'NVDA', price: 118.54, change: 2.14 }] });
   }
 
   try {
     const response = await axios.get('https://www.alphavantage.co/query', {
-      params: {
-        function: 'GLOBAL_QUOTE',
-        symbol: req.query.symbol || 'IBM',
-        apikey: apiKey
-      }
+      params: { function: 'GLOBAL_QUOTE', symbol: req.query.symbol || 'IBM', apikey: apiKey }
     });
 
     const quote = response.data['Global Quote'] || {};
@@ -380,19 +362,8 @@ app.get('/market', async (req, res) => {
     return res.json({ tickers: [{ symbol, price, change }] });
   } catch (error) {
     console.error('Alpha Vantage call failed:', error.response?.data || error.message);
-    return res.json({
-      tickers: [
-        { symbol: 'XBT', price: 68420.12, change: 1.84 },
-        { symbol: 'AAPL', price: 225.91, change: -0.42 },
-        { symbol: 'NVDA', price: 118.54, change: 2.14 }
-      ]
-    });
+    return res.json({ tickers: [{ symbol: 'XBT', price: 68420.12, change: 1.84 }, { symbol: 'AAPL', price: 225.91, change: -0.42 }, { symbol: 'NVDA', price: 118.54, change: 2.14 }] });
   }
-});
-
-app.post('/cart', requireAuth, (req, res) => {
-  const { productId, quantity = 1 } = req.body || {};
-  return res.json({ ok: true, productId, quantity, message: 'Saved to cart', user: req.user });
 });
 
 app.get('/health', (req, res) => {
