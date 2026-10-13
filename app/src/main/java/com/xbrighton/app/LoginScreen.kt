@@ -5,13 +5,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -19,6 +22,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,12 +66,10 @@ fun AppShell() {
     var currentScreen by remember { mutableStateOf(if (signedInUser != null) "dashboard" else "login") }
 
     when (currentScreen) {
-        "login" -> LoginScreen(
-            onSignedIn = {
-                signedInUser = SecureTokenStore.getEmail(context)
-                currentScreen = "dashboard"
-            }
-        )
+        "login" -> LoginScreen(onSignedIn = {
+            signedInUser = SecureTokenStore.getEmail(context)
+            currentScreen = "dashboard"
+        })
         "dashboard" -> DashboardScreen(
             userEmail = signedInUser ?: "",
             onLogout = {
@@ -76,6 +78,7 @@ fun AppShell() {
                 currentScreen = "login"
             },
             onOpenCart = { currentScreen = "cart" },
+            onOpenProducts = { currentScreen = "products" },
             onOpenProfile = { currentScreen = "profile" }
         )
         "profile" -> ProfileScreen(
@@ -86,9 +89,8 @@ fun AppShell() {
                 currentScreen = "login"
             }
         )
-        "cart" -> CartScreen(
-            onBack = { currentScreen = "dashboard" }
-        )
+        "cart" -> CartScreen(onBack = { currentScreen = "dashboard" })
+        "products" -> ProductListScreen(onBack = { currentScreen = "dashboard" })
         else -> LoginScreen(onSignedIn = {
             signedInUser = SecureTokenStore.getEmail(context)
             currentScreen = "dashboard"
@@ -176,12 +178,9 @@ fun LoginScreen(onSignedIn: () -> Unit) {
 }
 
 @Composable
-fun DashboardScreen(userEmail: String, onLogout: () -> Unit, onOpenCart: () -> Unit, onOpenProfile: () -> Unit) {
+fun DashboardScreen(userEmail: String, onLogout: () -> Unit, onOpenCart: () -> Unit, onOpenProducts: () -> Unit, onOpenProfile: () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D1321))
-            .padding(22.dp),
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0D1321)).padding(22.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text("XBrighton", color = Color.White, style = MaterialTheme.typography.headlineMedium)
@@ -190,6 +189,10 @@ fun DashboardScreen(userEmail: String, onLogout: () -> Unit, onOpenCart: () -> U
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             InfoCard(title = "Saved", value = "12")
             InfoCard(title = "Cart", value = "3")
+        }
+
+        Button(onClick = onOpenProducts, modifier = Modifier.fillMaxWidth()) {
+            Text("Browse Products")
         }
 
         Button(onClick = onOpenProfile, modifier = Modifier.fillMaxWidth()) {
@@ -202,6 +205,92 @@ fun DashboardScreen(userEmail: String, onLogout: () -> Unit, onOpenCart: () -> U
 
         Button(onClick = onLogout, modifier = Modifier.fillMaxWidth()) {
             Text("Sign Out")
+        }
+    }
+}
+
+@Composable
+fun ProductListScreen(onBack: () -> Unit) {
+    val client = remember { OkHttpClient() }
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var items by remember { mutableStateOf<List<Product>>(emptyList()) }
+    var status by remember { mutableStateOf("Loading products...") }
+
+    LaunchedEffect(Unit) {
+        coroutineScope.launch {
+            val list = fetchProducts(client, context)
+            items = list
+            status = if (list.isEmpty()) "No products available" else "${list.size} products found"
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0D1321)).padding(22.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Shop", color = Color.White, style = MaterialTheme.typography.headlineMedium)
+        Text(status, color = Color(0xFFBEE3FF))
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items) { product ->
+                ProductCard(product = product)
+            }
+        }
+
+        Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+            Text("Back to dashboard")
+        }
+    }
+}
+
+@Composable
+fun ProductCard(product: Product) {
+    val context = LocalContext.current
+    val client = remember { OkHttpClient() }
+    val coroutineScope = rememberCoroutineScope()
+    var saved by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .background(Color(0xFF1A2437), RoundedCornerShape(14.dp))
+            .padding(16.dp)
+            .fillMaxWidth()
+            .clickable {
+                // product detail can open later
+            }
+    ) {
+        Text(product.name, color = Color.White, style = MaterialTheme.typography.titleLarge)
+        Text(product.category, color = Color(0xFFBEE3FF))
+        Text("${product.description}", color = Color.White, modifier = Modifier.padding(top = 6.dp))
+        Text("$${product.price}", color = Color.White, modifier = Modifier.padding(top = 8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        addToCart(client, context, product)
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Add to cart")
+            }
+
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        val success = saveFavorite(client, context, product.id)
+                        saved = success
+                    }
+                },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(if (saved) "Saved" else "Save")
+            }
         }
     }
 }
@@ -223,10 +312,7 @@ fun ProfileScreen(onBack: () -> Unit, onLogout: () -> Unit) {
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D1321))
-            .padding(22.dp),
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0D1321)).padding(22.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Profile", color = Color.White, style = MaterialTheme.typography.headlineMedium)
@@ -257,16 +343,12 @@ fun CartScreen(onBack: () -> Unit) {
 
     LaunchedEffect(Unit) {
         coroutineScope.launch {
-            val result = getCart(client, context)
-            cartItems = result
+            cartItems = getCart(client, context)
         }
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF0D1321))
-            .padding(22.dp),
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0D1321)).padding(22.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text("Cart", color = Color.White, style = MaterialTheme.typography.headlineMedium)
@@ -284,10 +366,7 @@ fun CartScreen(onBack: () -> Unit) {
 @Composable
 fun InfoCard(title: String, value: String) {
     Column(
-        modifier = Modifier
-            .background(Color(0xFF1A2437), androidx.compose.foundation.shape.RoundedCornerShape(14.dp))
-            .padding(18.dp)
-            .width(120.dp),
+        modifier = Modifier.background(Color(0xFF1A2437), RoundedCornerShape(14.dp)).padding(18.dp).padding(horizontal = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(value, color = Color.White, style = MaterialTheme.typography.titleLarge)
@@ -295,14 +374,83 @@ fun InfoCard(title: String, value: String) {
     }
 }
 
+private suspend fun fetchProducts(client: OkHttpClient, context: Context): List<Product> = withContext(Dispatchers.IO) {
+    try {
+        val accessToken = SecureTokenStore.getAccessToken(context)
+        val request = Request.Builder().url(BASE_URL + "/products").apply {
+            if (accessToken != null) addHeader("Authorization", "Bearer $accessToken")
+        }.build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@withContext emptyList()
+            val body = response.body?.string() ?: return@withContext emptyList()
+            val obj = JSONObject(body)
+            val arr = obj.optJSONArray("products") ?: return@withContext emptyList()
+            val result = mutableListOf<Product>()
+            for (i in 0 until arr.length()) {
+                val item = arr.getJSONObject(i)
+                result.add(
+                    Product(
+                        id = item.optString("id"),
+                        name = item.optString("name"),
+                        category = item.optString("category"),
+                        description = item.optString("description"),
+                        price = item.optDouble("price", 0.0),
+                        color = item.optString("color"),
+                        size = item.optString("size")
+                    )
+                )
+            }
+            result
+        }
+    } catch (e: Exception) {
+        e.printStackTrace(); emptyList()
+    }
+}
+
+private suspend fun addToCart(client: OkHttpClient, context: Context, product: Product): Boolean = withContext(Dispatchers.IO) {
+    val accessToken = SecureTokenStore.getAccessToken(context) ?: return@withContext false
+    val json = JSONObject()
+        .put("productId", product.id)
+        .put("name", product.name)
+        .put("price", product.price)
+        .put("quantity", 1)
+        .toString()
+
+    try {
+        val request = Request.Builder()
+            .url(BASE_URL + "/cart")
+            .post(json.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .addHeader("Authorization", "Bearer $accessToken")
+            .build()
+
+        client.newCall(request).execute().use { response -> response.isSuccessful }
+    } catch (e: Exception) {
+        e.printStackTrace(); false
+    }
+}
+
+private suspend fun saveFavorite(client: OkHttpClient, context: Context, productId: String): Boolean = withContext(Dispatchers.IO) {
+    val accessToken = SecureTokenStore.getAccessToken(context) ?: return@withContext false
+    val json = JSONObject().put("productId", productId).toString()
+
+    try {
+        val request = Request.Builder()
+            .url(BASE_URL + "/favorites")
+            .post(json.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .addHeader("Authorization", "Bearer $accessToken")
+            .build()
+
+        client.newCall(request).execute().use { response -> response.isSuccessful }
+    } catch (e: Exception) {
+        e.printStackTrace(); false
+    }
+}
+
 private suspend fun performAuthRequest(client: OkHttpClient, endpoint: String, email: String, password: String): AuthResult? = withContext(Dispatchers.IO) {
     try {
         val json = JSONObject().put("email", email).put("password", password).toString()
-        val request = Request.Builder()
-            .url(BASE_URL + endpoint)
-            .post(json.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .build()
-
+        val request = Request.Builder().url(BASE_URL + endpoint).post(json.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
         client.newCall(request).execute().use { response ->
             val body = response.body?.string() ?: return@withContext null
             if (!response.isSuccessful) return@withContext null
@@ -321,13 +469,8 @@ private suspend fun performAuthRequest(client: OkHttpClient, endpoint: String, e
 private suspend fun refreshTokenIfNeeded(client: OkHttpClient, context: Context): Boolean = withContext(Dispatchers.IO) {
     val refreshToken = SecureTokenStore.getRefreshToken(context) ?: return@withContext false
     val json = JSONObject().put("refreshToken", refreshToken).toString()
-
     try {
-        val request = Request.Builder()
-            .url(BASE_URL + "/auth/refresh")
-            .post(json.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .build()
-
+        val request = Request.Builder().url(BASE_URL + "/auth/refresh").post(json.toRequestBody("application/json; charset=utf-8".toMediaType())).build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@withContext false
             val body = response.body?.string() ?: return@withContext false
@@ -375,7 +518,7 @@ private suspend fun getProfile(client: OkHttpClient, context: Context): ProfileR
 }
 
 private suspend fun getCart(client: OkHttpClient, context: Context): List<CartItem> = withContext(Dispatchers.IO) {
-    val accessToken = SecureTokenStore.getAccessToken(context) ?: return@withContext emptyList<CartItem>()
+    val accessToken = SecureTokenStore.getAccessToken(context) ?: return@withContext emptyList()
     val request = Request.Builder().url(BASE_URL + "/cart").addHeader("Authorization", "Bearer $accessToken").build()
 
     try {
@@ -383,7 +526,8 @@ private suspend fun getCart(client: OkHttpClient, context: Context): List<CartIt
             if (response.code == 401) {
                 val refreshed = refreshTokenIfNeeded(client, context)
                 if (!refreshed) return@withContext emptyList()
-                val retry = Request.Builder().url(BASE_URL + "/cart").addHeader("Authorization", "Bearer ${SecureTokenStore.getAccessToken(context)}").build()
+                val newToken = SecureTokenStore.getAccessToken(context) ?: return@withContext emptyList()
+                val retry = Request.Builder().url(BASE_URL + "/cart").addHeader("Authorization", "Bearer $newToken").build()
                 client.newCall(retry).execute().use { retryResponse ->
                     if (!retryResponse.isSuccessful) return@withContext emptyList()
                     val body = retryResponse.body?.string() ?: return@withContext emptyList()
@@ -423,11 +567,7 @@ private suspend fun logoutUser(client: OkHttpClient, context: Context): Boolean 
     val refreshToken = SecureTokenStore.getRefreshToken(context)
     try {
         val json = JSONObject().put("refreshToken", refreshToken ?: "").toString()
-        val request = Request.Builder()
-            .url(BASE_URL + "/auth/logout")
-            .post(json.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .addHeader("Authorization", "Bearer $accessToken")
-            .build()
+        val request = Request.Builder().url(BASE_URL + "/auth/logout").post(json.toRequestBody("application/json; charset=utf-8".toMediaType())).addHeader("Authorization", "Bearer $accessToken").build()
         client.newCall(request).execute().use { response -> response.isSuccessful }
     } catch (e: Exception) {
         e.printStackTrace(); false
@@ -437,3 +577,4 @@ private suspend fun logoutUser(client: OkHttpClient, context: Context): Boolean 
 data class AuthResult(val email: String, val accessToken: String, val refreshToken: String)
 data class ProfileResult(val id: Int, val email: String)
 data class CartItem(val id: Int, val productId: String, val name: String, val price: Double, val quantity: Int)
+data class Product(val id: String, val name: String, val category: String, val description: String, val price: Double, val color: String, val size: String)

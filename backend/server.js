@@ -26,54 +26,17 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
     console.error('Failed to connect to SQLite DB:', err.message);
   } else {
-    db.run(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `, (tableErr) => {
-      if (tableErr) console.error('Unable to create users table:', tableErr.message);
-    });
+    const tables = [
+      `CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
+      `CREATE TABLE IF NOT EXISTS refresh_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, token_hash TEXT NOT NULL, revoked INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(user_id, token_hash))`,
+      `CREATE TABLE IF NOT EXISTS cart_items (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, product_id TEXT NOT NULL, name TEXT NOT NULL, price REAL NOT NULL, quantity INTEGER DEFAULT 1, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
+      `CREATE TABLE IF NOT EXISTS favorites (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, product_id TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, UNIQUE(user_id, product_id))`
+    ];
 
-    db.run(`
-      CREATE TABLE IF NOT EXISTS refresh_tokens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        token_hash TEXT NOT NULL,
-        revoked INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(user_id, token_hash)
-      )
-    `, (tableErr) => {
-      if (tableErr) console.error('Unable to create refresh_tokens table:', tableErr.message);
-    });
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS cart_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        product_id TEXT NOT NULL,
-        name TEXT NOT NULL,
-        price REAL NOT NULL,
-        quantity INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `, (tableErr) => {
-      if (tableErr) console.error('Unable to create cart_items table:', tableErr.message);
-    });
-
-    db.run(`
-      CREATE TABLE IF NOT EXISTS favorites (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        product_id TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(user_id, product_id)
-      )
-    `, (tableErr) => {
-      if (tableErr) console.error('Unable to create favorites table:', tableErr.message);
+    tables.forEach((sql) => {
+      db.run(sql, (tableErr) => {
+        if (tableErr) console.error('Unable to initialize table:', tableErr.message);
+      });
     });
   }
 });
@@ -81,7 +44,8 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
 const mockProducts = [
   { id: 'shoes-001', name: 'Galaxy Runner X', category: 'Shoes', price: 129.99, description: 'Performance comfort', color: 'Midnight Blue', size: '8' },
   { id: 'clothes-001', name: 'Aurora Street Jacket', category: 'Clothes', price: 189.0, description: 'Urban premium', color: 'Stone Grey', size: 'M' },
-  { id: 'clothes-002', name: 'Velocity Knit Set', category: 'Clothes', price: 149.0, description: 'Minimal luxury', color: 'Ivory', size: 'L' }
+  { id: 'clothes-002', name: 'Velocity Knit Set', category: 'Clothes', price: 149.0, description: 'Minimal luxury', color: 'Ivory', size: 'L' },
+  { id: 'shoes-002', name: 'Nova Flex', category: 'Shoes', price: 119.0, description: 'Lightweight street support', color: 'Silver', size: '7' }
 ];
 
 const run = (sql, params = []) => new Promise((resolve, reject) => {
@@ -107,35 +71,33 @@ const all = (sql, params = []) => new Promise((resolve, reject) => {
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 
-function signToken(user, type = 'access') {
+const signToken = (user, type = 'access') => {
   const expiresIn = type === 'refresh' ? '7d' : '15m';
   return jwt.sign({ sub: user.id, email: user.email, type }, JWT_SECRET, { expiresIn });
-}
+};
 
-async function saveRefreshToken(user, refreshToken) {
+const saveRefreshToken = async (user, refreshToken) => {
   const tokenHash = hashToken(refreshToken);
   await run('INSERT OR IGNORE INTO refresh_tokens (user_id, token_hash, revoked) VALUES (?, ?, 0)', [user.id, tokenHash]);
-}
+};
 
-async function revokeRefreshToken(refreshToken) {
+const revokeRefreshToken = async (refreshToken) => {
   if (!refreshToken) return;
   const tokenHash = hashToken(refreshToken);
   await run('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?', [tokenHash]);
-}
+};
 
-async function revokeAllRefreshTokensForUser(userId) {
+const revokeAllRefreshTokensForUser = async (userId) => {
   await run('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?', [userId]);
-}
+};
 
-function createAuthPayload(user, refreshToken) {
-  return {
-    accessToken: signToken(user, 'access'),
-    refreshToken: refreshToken || signToken(user, 'refresh'),
-    user: { id: user.id, email: user.email }
-  };
-}
+const createAuthPayload = (user, refreshToken) => ({
+  accessToken: signToken(user, 'access'),
+  refreshToken: refreshToken || signToken(user, 'refresh'),
+  user: { id: user.id, email: user.email }
+});
 
-async function requireAuth(req, res, next) {
+const requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing bearer token' });
@@ -158,7 +120,7 @@ async function requireAuth(req, res, next) {
   } catch (error) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
-}
+};
 
 app.post('/auth/register', async (req, res) => {
   const { email, password } = req.body || {};
@@ -186,7 +148,6 @@ app.post('/auth/register', async (req, res) => {
     const user = await get('SELECT id, email FROM users WHERE id = ?', [result.id]);
     const refreshToken = signToken(user, 'refresh');
     await saveRefreshToken(user, refreshToken);
-
     return res.status(201).json({ message: 'User registered successfully', ...createAuthPayload(user, refreshToken) });
   } catch (error) {
     console.error('Register failed:', error);
@@ -216,7 +177,6 @@ app.post('/auth/login', async (req, res) => {
     const safeUser = { id: user.id, email: user.email };
     const refreshToken = signToken(safeUser, 'refresh');
     await saveRefreshToken(safeUser, refreshToken);
-
     return res.json({ message: 'Login successful', ...createAuthPayload(safeUser, refreshToken) });
   } catch (error) {
     console.error('Login error:', error);
@@ -259,9 +219,7 @@ app.post('/auth/refresh', async (req, res) => {
 
 app.post('/auth/logout', requireAuth, async (req, res) => {
   const { refreshToken } = req.body || {};
-  if (refreshToken) {
-    await revokeRefreshToken(refreshToken);
-  }
+  if (refreshToken) await revokeRefreshToken(refreshToken);
   await revokeAllRefreshTokensForUser(req.user.id);
   return res.json({ message: 'Logged out successfully', user: req.user });
 });
@@ -282,6 +240,14 @@ app.get('/products', async (req, res) => {
     console.error('Product API fetch failed, falling back to mock data:', error.message);
     return res.json({ products: mockProducts });
   }
+});
+
+app.get('/products/:id', async (req, res) => {
+  const product = mockProducts.find((item) => item.id === req.params.id);
+  if (!product) {
+    return res.status(404).json({ error: 'Product not found' });
+  }
+  return res.json({ product });
 });
 
 app.get('/cart', requireAuth, async (req, res) => {
@@ -343,6 +309,31 @@ app.post('/favorites', requireAuth, async (req, res) => {
   return res.status(201).json({ ok: true, item: created, message: 'Product saved to favorites' });
 });
 
+app.get('/ai-teacher', async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || apiKey === 'your_openai_api_key_here') {
+    return res.json({ response: 'AI Teacher is ready for real integration. Add your OpenAI key to backend/.env to enable live responses.' });
+  }
+
+  try {
+    const systemMessage = 'You are an expert fashion styling assistant for a premium apparel and shoe brand.';
+    const userPrompt = req.query.prompt || 'Recommend a premium streetwear outfit with shoes and jacket.';
+    const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: systemMessage }, { role: 'user', content: userPrompt }],
+      temperature: 0.7
+    }, {
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+    });
+
+    const text = response.data.choices?.[0]?.message?.content || 'AI recommendation unavailable.';
+    return res.json({ response: text.trim() });
+  } catch (error) {
+    console.error('OpenAI call failed:', error.response?.data || error.message);
+    return res.json({ response: 'AI Teacher is using fallback guidance. Add a valid OpenAI key to enable live responses.' });
+  }
+});
+
 app.get('/market', async (req, res) => {
   const apiKey = process.env.ALPHAVANTAGE_API_KEY;
   if (!apiKey || apiKey === 'your_alphavantage_api_key_here') {
@@ -358,7 +349,6 @@ app.get('/market', async (req, res) => {
     const symbol = quote['01. symbol'] || req.query.symbol || 'IBM';
     const price = parseFloat(quote['05. price'] || 0);
     const change = parseFloat(quote['10. change percent']?.replace('%', '') || 0);
-
     return res.json({ tickers: [{ symbol, price, change }] });
   } catch (error) {
     console.error('Alpha Vantage call failed:', error.response?.data || error.message);
