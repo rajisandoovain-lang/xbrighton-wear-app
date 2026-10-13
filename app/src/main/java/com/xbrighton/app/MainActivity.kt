@@ -6,7 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -54,17 +56,43 @@ fun PhoneCompanionUI() {
             fontSize = 14.sp,
             modifier = Modifier.padding(top = 8.dp)
         )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 24.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            StatCard(title = "New arrivals", value = "24")
+            StatCard(title = "Saved", value = "08")
+        }
+
         Text(
-            text = "New arrivals: 24 items",
-            color = Color(0xFF2C7A7B),
-            fontSize = 16.sp,
-            modifier = Modifier.padding(top = 20.dp)
-        )
-        Text(
-            text = "Trending look: Aurora Street Jacket",
+            text = "Featured: Aurora Street Jacket",
             color = Color(0xFF2B2D42),
             fontSize = 16.sp,
-            modifier = Modifier.padding(top = 10.dp)
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(top = 24.dp)
         )
+
+        Text(
+            text = "AI suggestion: pair with sleek runners for a premium street look.",
+            color = Color(0xFF4A5568),
+            fontSize = 14.sp,
+            modifier = Modifier.padding(top = 12.dp)
+        )
+    }
+}
+
+@Composable
+fun StatCard(title: String, value: String) {
+    Column(
+        modifier = Modifier
+            .background(Color(0xFFEFF6FF), androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1D4ED8))
+        Text(text = title, fontSize = 12.sp, color = Color(0xFF4B5563))
     }
 }
