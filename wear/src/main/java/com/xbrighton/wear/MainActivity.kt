@@ -3,6 +3,7 @@ package com.xbrighton.wear
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,28 +12,34 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
 import androidx.wear.compose.material.Button
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -53,9 +60,8 @@ class MainActivity : ComponentActivity() {
     @Composable
     fun XBrightonAppNav() {
         val productsState = remember { mutableStateListOf<Product>() }
-        var currentScreen by remember { androidx.compose.runtime.mutableStateOf("home") }
+        var currentScreen by remember { mutableStateOf("home") }
 
-        // Fetch products once when the composable is composed
         androidx.compose.runtime.LaunchedEffect(Unit) {
             fetchProducts()?.let { remote ->
                 productsState.clear()
@@ -75,7 +81,6 @@ class MainActivity : ComponentActivity() {
     private suspend fun fetchProducts(): List<Product>? {
         return withContext(Dispatchers.IO) {
             try {
-                // When using an Android emulator, use 10.0.2.2 to reach the host machine
                 val url = "http://10.0.2.2:3000/products"
                 val request = Request.Builder().url(url).build()
                 client.newCall(request).execute().use { resp ->
@@ -104,13 +109,7 @@ fun HomeScreen(products: List<Product>, onProductClick: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         item {
-            Text(
-                text = "XBrighton",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+            BrandHeader(title = "Clothes")
         }
         item {
             Text(
@@ -123,6 +122,90 @@ fun HomeScreen(products: List<Product>, onProductClick: () -> Unit) {
         items(products) { product ->
             ProductCard(product, onProductClick)
         }
+    }
+}
+
+@Composable
+fun BrandHeader(title: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Start
+    ) {
+        XBrightonLogo(modifier = Modifier.size(42.dp))
+        Column(modifier = Modifier.padding(start = 8.dp)) {
+            Text(
+                text = "XBrighton",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = title,
+                color = Color(0xFF9EC1FF),
+                fontSize = 10.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun XBrightonLogo(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val orange = Color(0xFFF29A1F)
+        val white = Color(0xFFFFFFFF)
+
+        val leftWing = Path().apply {
+            moveTo(0f, h * 0.70f)
+            lineTo(w * 0.10f, h * 0.22f)
+            lineTo(w * 0.45f, h * 0.22f)
+            lineTo(w * 0.26f, h * 0.70f)
+            lineTo(w * 0.12f, h * 0.92f)
+            close()
+        }
+
+        val rightWing = Path().apply {
+            moveTo(w, h * 0.70f)
+            lineTo(w * 0.90f, h * 0.22f)
+            lineTo(w * 0.55f, h * 0.22f)
+            lineTo(w * 0.74f, h * 0.70f)
+            lineTo(w * 0.88f, h * 0.92f)
+            close()
+        }
+
+        val centerTop = Path().apply {
+            moveTo(w * 0.50f, 0f)
+            lineTo(w * 0.76f, h * 0.28f)
+            lineTo(w * 0.50f, h * 0.47f)
+            lineTo(w * 0.24f, h * 0.28f)
+            close()
+        }
+
+        val centerDiamond = Path().apply {
+            moveTo(w * 0.50f, h * 0.18f)
+            lineTo(w * 0.69f, h * 0.38f)
+            lineTo(w * 0.50f, h * 0.72f)
+            lineTo(w * 0.31f, h * 0.38f)
+            close()
+        }
+
+        val cutout = Path().apply {
+            moveTo(w * 0.50f, h * 0.32f)
+            lineTo(w * 0.60f, h * 0.46f)
+            lineTo(w * 0.50f, h * 0.58f)
+            lineTo(w * 0.40f, h * 0.46f)
+            close()
+        }
+
+        drawPath(leftWing, color = orange, style = Fill)
+        drawPath(rightWing, color = orange, style = Fill)
+        drawPath(centerTop, color = orange, style = Fill)
+        drawPath(centerDiamond, color = orange, style = Fill)
+        drawPath(cutout, color = white, style = Fill)
     }
 }
 
@@ -145,11 +228,7 @@ fun ProductCard(product: Product, onClick: () -> Unit) {
                 color = Color(0xFF9EC1FF),
                 fontSize = 10.sp
             )
-            Text(
-                text = "★",
-                color = Color(0xFFFFD166),
-                fontSize = 12.sp
-            )
+            XBrightonLogo(modifier = Modifier.size(18.dp))
         }
         Text(
             text = product.name,
@@ -183,6 +262,7 @@ fun DetailScreen(onBack: () -> Unit, onAiClick: () -> Unit, onMarketClick: () ->
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        BrandHeader(title = "Clothes")
         Text("Aurora Street Jacket", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Text("Stone Grey • M • $189.00", color = Color(0xFF9EC1FF), fontSize = 11.sp)
         Text("Premium streetwear blend with a lightweight structure and elevated layered look.", color = Color(0xFFDDE7F7), fontSize = 10.sp)
@@ -210,7 +290,7 @@ fun AiScreen(onBack: () -> Unit) {
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("AI Teacher", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        BrandHeader(title = "AI")
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -234,7 +314,7 @@ fun MarketScreen(onBack: () -> Unit) {
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("Market", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        BrandHeader(title = "Market")
         Ticker("XBT", "68420.12", "+1.84%")
         Ticker("AAPL", "225.91", "-0.42%")
         Ticker("NVDA", "118.54", "+2.14%")
@@ -267,7 +347,6 @@ data class Product(
     val description: String
 )
 
-// DTOs for backend parsing
 data class ProductsWrapper(val products: List<BackendProduct>)
 
 data class BackendProduct(
